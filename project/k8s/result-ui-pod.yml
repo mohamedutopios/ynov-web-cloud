@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: result-ui
+  labels:
+    app: result-ui
+spec:
+  containers:
+    - image: mohamed1780/result-ui
+      name: result-ui
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 80
+          name: result-ui

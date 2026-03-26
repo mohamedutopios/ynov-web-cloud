@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: result
+  labels:
+    app: result
+spec:
+  containers:
+    - image: mohamed1780/result
+      name: result
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 5000
+          name: result

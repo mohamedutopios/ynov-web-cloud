@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vote-ui
+  labels:
+    app: vote-ui
+spec:
+  containers:
+    - image: mohamed1780/vote-ui
+      name: vote-ui
+      imagePullPolicy: Always
+      ports:
+        - containerPort: 80
+          name: vote-ui
