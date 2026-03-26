@@ -1,0 +1,7 @@
+node_modules/
+.env
+src/frontend/build/
+*.log
+
+# Ne jamais committer les Secrets avec de vraies valeurs
+# k8s/step-05-secret/step-05-secret.yaml

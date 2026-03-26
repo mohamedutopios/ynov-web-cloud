@@ -1,0 +1,65 @@
+version: "3.9"
+
+# ── docker-compose.yml — Environnement de développement local ─────────────────
+#
+# Lance les 3 services en local :
+#   - postgres  : base de données
+#   - backend   : API Node.js (port 3001)
+#   - frontend  : React en mode dev avec hot-reload (port 3000)
+#
+# Démarrage : docker compose up --build
+# Arrêt     : docker compose down -v   (-v supprime le volume postgres)
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: bookshelf-db
+    environment:
+      POSTGRES_DB:       bookshelf
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"        # Accessible depuis l'hôte pour un client SQL (DBeaver, etc.)
+    volumes:
+      - postgres-data:/var/lib/postgresql/data   # Persistance des données
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend Node.js ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: ../../docker/Dockerfile.backend
+    container_name: bookshelf-api
+    environment:
+      PORT:        3001
+      DB_HOST:     postgres          # Nom du service docker-compose
+      DB_PORT:     5432
+      DB_NAME:     bookshelf
+      DB_USER:     postgres
+      DB_PASSWORD: postgres
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy   # Attend que PostgreSQL soit prêt
+    restart: on-failure
+
+  # ── Frontend React ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: ../../docker/Dockerfile.frontend
+    container_name: bookshelf-front
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:   # Volume nommé pour la persistance de PostgreSQL
