@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ghost
+  labels:
+    app: ghost
+spec:
+  containers:
+  - name: ghost
+    image: ghost:alpine
+    env:                      
+    - name: NODE_ENV
+      value: "development"
+    ports:
+    - containerPort: 2368
