@@ -1,0 +1,213 @@
+
+		<head>
+			<style type="text/css" media="screen">
+				body,html{font-family:var(--markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif);font-size:var(--markdown-font-size,14px);padding:0 26px;line-height:var(--markdown-line-height,22px);word-wrap:break-word}body{padding-top:1em}h1,h2,h3,h4,h5,h6,ol,p,pre,ul{margin-top:0}h2,h3,h4,h5,h6{font-weight:400;margin-bottom:.2em}img{max-width:100%;max-height:100%}a{text-decoration:none}a:hover{text-decoration:underline}a:focus,input:focus,select:focus,textarea:focus{outline:1px solid -webkit-focus-ring-color;outline-offset:-1px}p{margin-bottom:.7em}ol,ul{margin-bottom:.7em}hr{border:0;height:2px;border-bottom:2px solid}h1{padding-bottom:.3em;line-height:1.2;border-bottom-width:1px;border-bottom-style:solid;font-weight:400}table{border-collapse:collapse}th{text-align:left;border-bottom:1px solid}td,th{padding:5px 10px}table>tbody>tr+tr>td{border-top:1px solid}blockquote{margin:0 7px 0 5px;padding:0 16px 0 10px;border-left-width:5px;border-left-style:solid}code{font-family:var(--vscode-editor-font-family, "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace);font-size:1em;line-height:1.357em}body.wordWrap pre{white-space:pre-wrap}pre.hljs code>div,pre:not(.hljs){padding:16px;border-radius:3px;overflow:auto}pre code{color:var(--vscode-editor-foreground);tab-size:4}
+			</style>
+		</head>
+		<body>
+			<h1 id="tp--pod-multi-conteneurs--sidecar-writer--nginx">TP — Pod multi-conteneurs : Sidecar Writer + Nginx</h1>
+<h2 id="contexte">Contexte</h2>
+<p>Vous allez déployer un Pod Kubernetes contenant <strong>deux conteneurs</strong> qui
+collaborent via un volume partagé :</p>
+<ul>
+<li>Un conteneur <strong>busybox</strong> qui écrit toutes les 3 secondes la date et le
+message <em>&quot;Je suis à Ynov Croix&quot;</em> dans un fichier <code>index.html</code></li>
+<li>Un conteneur <strong>nginx</strong> qui sert ce fichier sur le port 80</li>
+</ul>
+<p>L&#39;objectif est de comprendre comment deux conteneurs d&#39;un même Pod
+<strong>partagent le réseau et le stockage</strong>, et d&#39;observer ce mécanisme en direct
+depuis votre navigateur.</p>
+<hr>
+<h2 id="architecture-cible">Architecture cible</h2>
+<pre><code>┌──────────────────────────────────────────────────────┐
+│                    Pod &quot;ynov-pod&quot;                    │
+│                                                      │
+│  ┌─────────────────┐      ┌─────────────────────┐   │
+│  │    busybox      │      │       nginx         │   │
+│  │   (writer)      │      │   (serveur web)     │   │
+│  │                 │      │                     │   │
+│  │  toutes les 3s  │      │  sert index.html    │   │
+│  │  → écrit date + │      │  sur le port 80     │   │
+│  │  message dans   │      │                     │   │
+│  │  index.html     │      │                     │   │
+│  └────────┬────────┘      └──────────┬──────────┘   │
+│           │ écrit                    │ lit           │
+│           ▼                          ▼               │
+│  ┌──────────────────────────────────────────────┐    │
+│  │        Volume emptyDir  &quot;web-content&quot;        │    │
+│  │                                              │    │
+│  │  busybox → /data/index.html                  │    │
+│  │  nginx   → /usr/share/nginx/html/index.html  │    │
+│  └──────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────┘
+                    │
+          port-forward 8080:80
+                    │
+               [Navigateur]
+           http://localhost:8080
+</code></pre>
+<hr>
+<h2 id="prérequis">Prérequis</h2>
+<ul>
+<li>Cluster kind opérationnel (<code>kind get clusters</code>)</li>
+<li><code>kubectl</code> configuré et fonctionnel (<code>kubectl get nodes</code>)</li>
+</ul>
+<hr>
+<h2 id="exercice-1--créer-le-manifest-du-pod">Exercice 1 — Créer le manifest du Pod</h2>
+<p>Créez un fichier <code>pod-ynov-sidecar.yaml</code> contenant un Pod nommé <code>ynov-pod</code>
+avec les caractéristiques suivantes :</p>
+<h3 id="le-volume">Le volume</h3>
+<p>Déclarez un volume de type <code>emptyDir</code> nommé <code>web-content</code> au niveau du Pod.</p>
+<blockquote>
+<p>💡 Un volume <code>emptyDir</code> est créé vide au démarrage du Pod et partagé entre
+tous ses conteneurs. Il est détruit quand le Pod est supprimé.</p>
+</blockquote>
+<h3 id="conteneur-1--writer-busybox">Conteneur 1 — <code>writer</code> (busybox)</h3>
+<table>
+<thead>
+<tr>
+<th>Propriété</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Nom</td>
+<td><code>writer</code></td>
+</tr>
+<tr>
+<td>Image</td>
+<td><code>busybox</code></td>
+</tr>
+<tr>
+<td>Volume monté</td>
+<td><code>web-content</code> → <code>/data</code></td>
+</tr>
+</tbody></table>
+<p>La commande du conteneur doit :</p>
+<ul>
+<li>Tourner en boucle infinie</li>
+<li>Toutes les 3 secondes, écrire dans <code>/data/index.html</code> :<ul>
+<li>La date et l&#39;heure courantes (commande <code>date</code>)</li>
+<li>Le message <strong>&quot;Je suis à Ynov Croix&quot;</strong></li>
+</ul>
+</li>
+<li>Afficher un message dans les logs à chaque écriture</li>
+</ul>
+<h3 id="conteneur-2--nginx-nginx125">Conteneur 2 — <code>nginx</code> (nginx:1.25)</h3>
+<table>
+<thead>
+<tr>
+<th>Propriété</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Nom</td>
+<td><code>nginx</code></td>
+</tr>
+<tr>
+<td>Image</td>
+<td><code>nginx:1.25</code></td>
+</tr>
+<tr>
+<td>Port</td>
+<td><code>80</code></td>
+</tr>
+<tr>
+<td>Volume monté</td>
+<td><code>web-content</code> → <code>/usr/share/nginx/html</code></td>
+</tr>
+</tbody></table>
+<blockquote>
+<p>💡 <code>/usr/share/nginx/html</code> est le répertoire par défaut servi par Nginx.
+En montant le volume à cet endroit, Nginx sert automatiquement l&#39;<code>index.html</code>
+écrit par le conteneur <code>writer</code>.</p>
+</blockquote>
+<hr>
+<h2 id="exercice-2--déployer-et-vérifier">Exercice 2 — Déployer et vérifier</h2>
+<p><strong>2.1</strong> Appliquez le manifest :</p>
+<p><strong>2.2</strong> Surveillez le démarrage du Pod. Quelle valeur doit afficher la colonne
+<code>READY</code> pour que le Pod soit pleinement opérationnel ?</p>
+<p><strong>2.3</strong> Décrivez le Pod et repérez dans la sortie :</p>
+<hr>
+<h2 id="exercice-3--accéder-à-lapplication">Exercice 3 — Accéder à l&#39;application</h2>
+<p><strong>3.1</strong> Ouvrez un port-forward vers le Pod :</p>
+<p><strong>3.2</strong> Ouvrez votre navigateur à l&#39;adresse <strong><a href="http://localhost:8080">http://localhost:8080</a></strong></p>
+<p><strong>Questions :</strong></p>
+<ul>
+<li>Que voyez-vous s&#39;afficher ?</li>
+<li>La page se met-elle à jour automatiquement ? À quelle fréquence ?</li>
+<li>Laissez le port-forward actif et ouvrez un <strong>nouveau terminal</strong> pour la suite.</li>
+</ul>
+<hr>
+<h2 id="exercice-4--observer-les-logs">Exercice 4 — Observer les logs</h2>
+<p><strong>4.1</strong> Affichez les logs du conteneur <code>writer</code> en temps réel :</p>
+<p><strong>4.2</strong> Dans un autre terminal, affichez les logs du conteneur <code>nginx</code> :</p>
+<p><strong>Questions :</strong></p>
+<ul>
+<li>Que se passe-t-il dans les logs nginx quand vous rafraîchissez la page ?</li>
+<li>Quelle option de <code>kubectl logs</code> permet de spécifier un conteneur dans un
+Pod multi-conteneurs ?</li>
+</ul>
+<hr>
+<h2 id="exercice-5--explorer-le-volume-partagé">Exercice 5 — Explorer le volume partagé</h2>
+<p><strong>5.1</strong> Lisez le fichier <code>index.html</code> depuis le conteneur <code>writer</code> :</p>
+<p><strong>5.2</strong> Lisez le même fichier depuis le conteneur <code>nginx</code> :</p>
+<p><strong>Question :</strong> Les deux commandes affichent-elles le même contenu ?
+Expliquez pourquoi.</p>
+<hr>
+<h2 id="exercice-6--vérifier-le-réseau-partagé">Exercice 6 — Vérifier le réseau partagé</h2>
+<p><strong>6.1</strong> Récupérez l&#39;adresse IP de chaque conteneur :</p>
+<p><strong>Question :</strong> Les deux adresses IP sont-elles identiques ? Que cela
+implique-t-il pour la communication entre les conteneurs ?</p>
+<p><strong>6.2</strong> Vérifiez que le conteneur <code>writer</code> peut accéder à nginx via
+<code>localhost</code> :</p>
+<hr>
+<h2 id="exercice-7--modification-à-chaud">Exercice 7 — Modification à chaud</h2>
+<p><strong>7.1</strong> Écrivez manuellement un nouveau contenu dans le volume depuis le
+conteneur <code>writer</code> :</p>
+<p><strong>7.2</strong> Rafraîchissez votre navigateur.</p>
+<p><strong>Questions :</strong></p>
+<ul>
+<li>Que voyez-vous immédiatement après la modification ?</li>
+<li>Que se passe-t-il 3 secondes plus tard ? Pourquoi ?</li>
+</ul>
+<hr>
+<h2 id="exercice-8--résilience-du-pod">Exercice 8 — Résilience du Pod</h2>
+<p><strong>8.1</strong> Simulez un crash du conteneur <code>writer</code> :</p>
+<p><strong>8.2</strong> Observez l&#39;état du Pod :</p>
+<p><strong>Questions :</strong></p>
+<ul>
+<li>Quel conteneur a redémarré ?</li>
+<li>Le conteneur <code>nginx</code> a-t-il été affecté ?</li>
+<li>La page est-elle toujours accessible pendant le redémarrage du <code>writer</code> ?</li>
+</ul>
+<hr>
+<h2 id="exercice-9--nettoyage">Exercice 9 — Nettoyage</h2>
+<p><strong>Question :</strong> Que devient le contenu du volume <code>emptyDir</code> après la
+suppression du Pod ?</p>
+<hr>
+<h2 id="rappel-des-commandes-utiles">Rappel des commandes utiles</h2>
+<pre><code class="language-bash"># Appliquer un manifest
+kubectl apply -f &lt;fichier.yaml&gt;
+
+# Surveiller un Pod
+kubectl get pod &lt;nom&gt; --watch
+
+# Décrire un Pod
+kubectl describe pod &lt;nom&gt;
+
+# Logs d&#39;un conteneur spécifique
+kubectl logs &lt;pod&gt; -c &lt;conteneur&gt; --follow
+
+# Exécuter une commande dans un conteneur
+kubectl exec &lt;pod&gt; -c &lt;conteneur&gt; -- &lt;commande&gt;
+
+# Port-forward
+kubectl port-forward pod/&lt;nom&gt; &lt;port-local&gt;:&lt;port-pod&gt;
+
+# Supprimer un Pod
+kubectl delete pod &lt;nom&gt;
+</code></pre>
+
+		</body>
