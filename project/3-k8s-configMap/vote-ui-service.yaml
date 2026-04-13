@@ -2,14 +2,14 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: result-ui
-  name: result-ui
+    app: vote-ui
+  name: vote-ui
 spec:
   type: NodePort
   ports:
-    - name: "result-ui-service"
+    - name: "vote-ui-service"
       port: 5000
       targetPort: 80
-      nodePort: 30002
+      nodePort: 31000
   selector:
-    app: result-ui
+    app: vote-ui

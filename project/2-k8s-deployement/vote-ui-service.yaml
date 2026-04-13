@@ -10,6 +10,6 @@ spec:
     - name: "vote-ui-service"
       port: 5000
       targetPort: 80
-      nodePort: 30001
+      nodePort: 31000
   selector:
     app: vote-ui
